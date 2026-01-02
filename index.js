@@ -33,35 +33,40 @@ async function startWhatsApp() {
     browser: ['PodoAgenda', 'Chrome', '1.0']
   })
 
-  // 🔐 Gera Pairing Code (somente se ainda não estiver registrado)
-  if (!state.creds.registered) {
-    const code = await sock.requestPairingCode(PHONE_NUMBER)
-    console.log('📱 CÓDIGO DE PAREAMENTO:', code)
-    console.log('👉 WhatsApp > Dispositivos conectados > Conectar com número')
-  }
-
   sock.ev.on('creds.update', async () => {
     await saveCreds()
     await backupSession()
     console.log('💾 Sessão salva no Supabase')
   })
 
-  sock.ev.on('connection.update', (update) => {
+  sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update
-
+  
     if (connection === 'open') {
-      console.log('✅ WhatsApp conectado com sucesso!')
+      console.log('🔗 Conexão aberta')
+  
+      if (!sock.authState.creds.registered) {
+        try {
+          const code = await sock.requestPairingCode(PHONE_NUMBER)
+          console.log('📱 CÓDIGO DE PAREAMENTO:', code)
+          console.log('👉 WhatsApp > Dispositivos conectados > Conectar com número')
+        } catch (err) {
+          console.error('❌ Erro ao gerar pairing code:', err)
+        }
+      } else {
+        console.log('✅ WhatsApp conectado com sessão existente')
+      }
     }
-
+  
     if (connection === 'close') {
       const reason = lastDisconnect?.error?.output?.statusCode
       console.log('⚠️ Conexão fechada. Código:', reason)
-
+  
       if (reason !== DisconnectReason.loggedOut) {
         console.log('🔁 Reconectando automaticamente...')
-        setTimeout(startWhatsApp, 3000)
+        setTimeout(startWhatsApp, 5000)
       } else {
-        console.log('❌ WhatsApp deslogado. Será necessário novo pareamento.')
+        console.log('❌ WhatsApp deslogado. Novo pareamento necessário.')
       }
     }
   })
