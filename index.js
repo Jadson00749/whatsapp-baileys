@@ -1,79 +1,98 @@
 require('dotenv').config()
-const { backupSession, restoreSession } = require('./sessionBackup')
-
 
 const express = require('express')
 const qrcode = require('qrcode-terminal')
 const {
   default: makeWASocket,
-  useMultiFileAuthState,
-  DisconnectReason
+  DisconnectReason,
+  useMultiFileAuthState
 } = require('@whiskeysockets/baileys')
+
+const { backupSession, restoreSession } = require('./sessionBackup')
 
 const app = express()
 app.use(express.json())
 
+const PORT = process.env.PORT || 3000
+const SESSION_NAME = process.env.SESSION_NAME || 'default'
+const PHONE_NUMBER = '5516997242367' // Ex: 5511999999999
+
 let sock
 
 async function startWhatsApp() {
+  console.log('🚀 Iniciando WhatsApp...')
+
+  // 🔄 restaura sessão do Supabase
   await restoreSession()
 
-  const { state, saveCreds } = await useMultiFileAuthState('./sessions')
+  const { state, saveCreds } = await useMultiFileAuthState('sessions')
 
   sock = makeWASocket({
     auth: state,
-    browser: ['PodoAgenda', 'Chrome', '1.0'],
-    syncFullHistory: false
+    printQRInTerminal: false,
+    browser: ['PodoAgenda', 'Chrome', '1.0']
   })
+
+  // 🔐 Gera Pairing Code (somente se ainda não estiver registrado)
+  if (!state.creds.registered) {
+    const code = await sock.requestPairingCode(PHONE_NUMBER)
+    console.log('📱 CÓDIGO DE PAREAMENTO:', code)
+    console.log('👉 WhatsApp > Dispositivos conectados > Conectar com número')
+  }
 
   sock.ev.on('creds.update', async () => {
     await saveCreds()
     await backupSession()
+    console.log('💾 Sessão salva no Supabase')
   })
 
   sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect, qr } = update
-  
-    if (qr) {
-      console.log('📱 Escaneie o QR Code abaixo:')
-      qrcode.generate(qr, { small: true })
-    }
-  
+    const { connection, lastDisconnect } = update
+
     if (connection === 'open') {
       console.log('✅ WhatsApp conectado com sucesso!')
     }
-  
+
     if (connection === 'close') {
       const reason = lastDisconnect?.error?.output?.statusCode
       console.log('⚠️ Conexão fechada. Código:', reason)
-  
-      // 515 / quedas iniciais → reinicia automaticamente
+
       if (reason !== DisconnectReason.loggedOut) {
-        console.log('🔁 Reiniciando conexão automaticamente...')
-        setTimeout(() => startWhatsApp(), 2000)
+        console.log('🔁 Reconectando automaticamente...')
+        setTimeout(startWhatsApp, 3000)
       } else {
-        console.log('❌ WhatsApp deslogado. Será necessário novo QR Code.')
+        console.log('❌ WhatsApp deslogado. Será necessário novo pareamento.')
       }
     }
   })
 }
 
+// 📩 Endpoint para enviar mensagens
 app.post('/send', async (req, res) => {
-  const { phone, message } = req.body
-  if (!phone || !message) {
-    return res.status(400).json({ error: 'phone e message são obrigatórios' })
-  }
   try {
+    const { phone, message } = req.body
+
+    if (!phone || !message) {
+      return res.status(400).json({ error: 'phone e message são obrigatórios' })
+    }
+
     const jid = phone.replace(/\D/g, '') + '@s.whatsapp.net'
+
     await sock.sendMessage(jid, { text: message })
+
     res.json({ success: true })
   } catch (err) {
-    console.error(err)
+    console.error('Erro ao enviar mensagem:', err)
     res.status(500).json({ error: 'Erro ao enviar mensagem' })
   }
 })
 
-startWhatsApp()
-app.listen(3000, () => {
-  console.log('🚀 WhatsApp API rodando em http://localhost:3000')
+// Health check (Render)
+app.get('/', (_, res) => {
+  res.send('WhatsApp API rodando 🚀')
+})
+
+app.listen(PORT, () => {
+  console.log(`🌐 API rodando na porta ${PORT}`)
+  startWhatsApp()
 })
