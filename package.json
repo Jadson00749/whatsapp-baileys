@@ -1,0 +1,22 @@
+{
+  "name": "whatsapp-baileys",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.89.0",
+    "@whiskeysockets/baileys": "^7.0.0-rc.9",
+    "archiver": "^7.0.1",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "node-fetch": "^3.3.2",
+    "qrcode-terminal": "^0.12.0",
+    "unzipper": "^0.12.3"
+  }
+}
